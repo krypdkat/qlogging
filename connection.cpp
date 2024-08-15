@@ -121,13 +121,18 @@ T QubicConnection::receivePacketAs()
         throw std::logic_error("No connection.");
     }
     int packet_size = header.size();
-    memset(mBuffer, 0xff, packet_size - sizeof(RequestResponseHeader));
-    // receive the rest
-    recvByte = receiveData(mBuffer, packet_size - sizeof(RequestResponseHeader));
-    if (recvByte != packet_size - sizeof(RequestResponseHeader)){
-        throw std::logic_error("No connection.");
+    T result;
+    memset(&result, 0xff, sizeof(T));
+    if (packet_size - sizeof(RequestResponseHeader))
+    {
+        memset(mBuffer, 0xff, packet_size - sizeof(RequestResponseHeader));
+        // receive the rest
+        recvByte = receiveData(mBuffer, packet_size - sizeof(RequestResponseHeader));
+        if (recvByte != packet_size - sizeof(RequestResponseHeader)){
+            throw std::logic_error("No connection.");
+        }
+        result = *((T*)mBuffer);
     }
-    T result = *((T*)mBuffer);
     return result;
 }
 
