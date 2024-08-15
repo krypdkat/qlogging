@@ -122,10 +122,10 @@ T QubicConnection::receivePacketAs()
     }
     int packet_size = header.size();
     T result;
-    memset(&result, 0xff, sizeof(T));
+    memset(&result, 0, sizeof(T));
     if (packet_size - sizeof(RequestResponseHeader))
     {
-        memset(mBuffer, 0xff, packet_size - sizeof(RequestResponseHeader));
+        memset(mBuffer, 0, packet_size - sizeof(RequestResponseHeader));
         // receive the rest
         recvByte = receiveData(mBuffer, packet_size - sizeof(RequestResponseHeader));
         if (recvByte != packet_size - sizeof(RequestResponseHeader)){
