@@ -4,6 +4,11 @@
 #include "connection.h"
 #include "parser.h"
 #include "structs.h"
+#include "keyUtils.h"
+#include "K12AndKeyUtil.h"
+#include "logger.h"
+#include <stdexcept>
+#define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 
 template <typename T>
 T charToNumber(char* a)
@@ -47,7 +52,7 @@ void getLogFromNode(QCPtr& qc, uint64_t* passcode, uint64_t fromId, uint64_t toI
     packet.toid = toId;
     qc->sendData((uint8_t *) &packet, packet.header.size());
     std::vector<uint8_t> buffer;
-    qc->receiveDataAll(buffer);
+    qc->receiveAFullPacket(buffer);
     uint8_t* data = buffer.data();
     int recvByte = buffer.size();
     int ptr = 0;
@@ -94,7 +99,7 @@ static CurrentTickInfo getTickInfoFromNode(QCPtr& qc)
     packet.header.setType(REQUEST_CURRENT_TICK_INFO);
     qc->sendData((uint8_t *) &packet, packet.header.size());
     std::vector<uint8_t> buffer;
-    qc->receiveDataAll(buffer);
+    qc->receiveAFullPacket(buffer);
     uint8_t* data = buffer.data();
     int recvByte = buffer.size();
     int ptr = 0;
@@ -109,6 +114,90 @@ static CurrentTickInfo getTickInfoFromNode(QCPtr& qc)
     }
     return result;
 }
+
+static void getTickTransactions(QCPtr& qc, const uint32_t requestedTick, int requestedTxId,
+                                Transaction& txs, //out
+                                extraDataStruct& extraData // out
+)
+{
+    struct {
+        RequestResponseHeader header;
+        RequestedTickTransactions txs;
+    } packet;
+    packet.header.setSize(sizeof(packet));
+    packet.header.randomizeDejavu();
+    packet.header.setType(REQUEST_TICK_TRANSACTIONS); // REQUEST_TICK_TRANSACTIONS
+    packet.txs.tick = requestedTick;
+    for (int i = 0; i < (1024+7)/8; i++) packet.txs.transactionFlags[i] = 0xff;
+
+    {
+        packet.txs.transactionFlags[requestedTxId>>3] &= ~(1 << (requestedTxId & 7));
+    }
+    qc->sendData((uint8_t *) &packet, packet.header.size());
+
+    {
+        std::vector<uint8_t> buffer;
+        qc->receiveAFullPacket(buffer);
+        uint8_t* data = buffer.data();
+        int recvByte = buffer.size();
+        int ptr = 0;
+        while (ptr < recvByte)
+        {
+            auto header = (RequestResponseHeader*)(data+ptr);
+            if (header->type() == BROADCAST_TRANSACTION){
+                auto tx = (Transaction *)(data + ptr + sizeof(RequestResponseHeader));
+                txs = *tx;
+                extraDataStruct ed;
+                ed.vecU8.resize(tx->inputSize);
+                if (tx->inputSize != 0){
+                    memcpy(ed.vecU8.data(), reinterpret_cast<const uint8_t *>(tx) + sizeof(Transaction), tx->inputSize);
+                }
+                extraData = ed;
+            }
+            ptr+= header->size();
+        }
+    }
+    {
+        // receive END OF transmission
+        std::vector<uint8_t> buffer;
+        qc->receiveAFullPacket(buffer);
+    }
+}
+void printReceipt(Transaction& tx, const char* txHash = nullptr, const uint8_t* extraData = nullptr, int moneyFlew = -1)
+{
+    char sourceIdentity[128] = {0};
+    char dstIdentity[128] = {0};
+    char txHashClean[128] = {0};
+    bool isLowerCase = false;
+    getIdentityFromPublicKey(tx.sourcePublicKey, sourceIdentity, isLowerCase);
+    getIdentityFromPublicKey(tx.destinationPublicKey, dstIdentity, isLowerCase);
+    LOG("~~~~~RECEIPT~~~~~\n");
+    if (txHash != nullptr) {
+        memcpy(txHashClean, txHash, 60);
+        LOG("TxHash: %s\n", txHashClean);
+    }
+    LOG("From: %s\n", sourceIdentity);
+    LOG("To: %s\n", dstIdentity);
+    LOG("Input type: %u\n", tx.inputType);
+    LOG("Amount: %lu\n", tx.amount);
+    LOG("Tick: %u\n", tx.tick);
+    LOG("Extra data size: %u\n", tx.inputSize);
+    if (extraData != nullptr && tx.inputSize){
+        char hex_tring[1024*2] = {0};
+        for (int i = 0; i < tx.inputSize; i++)
+            sprintf(hex_tring + i * 2, "%02x", extraData[i]);
+
+        LOG("Extra data: %s\n", hex_tring);
+    }
+    if (moneyFlew != -1){
+        if (moneyFlew) LOG("MoneyFlew: Yes\n");
+        else LOG("MoneyFlew: No\n");
+    } else {
+        LOG("MoneyFlew: N/A\n");
+    }
+    LOG("~~~~~END-RECEIPT~~~~~\n");
+}
+
 uint32_t getTickNumberFromNode(QCPtr& qc)
 {
     auto curTickInfo = getTickInfoFromNode(qc);
@@ -122,6 +211,8 @@ int run(int argc, char* argv[])
         printf("./qlogging [nodeip] [nodeport] [passcode u64 x 4] [tick to start]\n");
         return 0;
     }
+    uint8_t arbPubkey[32];
+    getPublicKeyFromIdentity(ARBITRATOR, arbPubkey);
     char* nodeIp = argv[1];
     int nodePort = charToNumber<int>(argv[2]);
     uint64_t passcode[4] = {charToNumber<unsigned long long>(argv[3]), charToNumber<unsigned long long>(argv[4]),
@@ -138,7 +229,7 @@ int run(int argc, char* argv[])
                 qc = make_qc(nodeIp, nodePort);
                 // do the handshake stuff
                 std::vector<uint8_t> buff;
-                qc->receiveDataAll(buff);
+                qc->receiveAFullPacket(buff);
                 needReconnect = false;
             }
             if (currentTick == 0 || currentTick <= tick) {
@@ -147,6 +238,7 @@ int run(int argc, char* argv[])
             if (currentTick <= tick) {
                 printf("Current tick %u vs local tick %u | sleep 3s\n", currentTick, tick);
                 std::this_thread::sleep_for(std::chrono::seconds(3));
+                continue;
             }
             TickData td;
             memset(&td, 0, sizeof(td));
@@ -157,18 +249,60 @@ int run(int argc, char* argv[])
                 tick++;
                 continue;
             }
+
+            // for debugging purpose, this one isn't needed in real code
+            int nTx = 0;
             for (int i = 0; i < 1024; i++) {
                 if (isArrayZero(td.transactionDigests[i], 32)) break;
-                long long fromId = 0, toId = 0;
-                getLogIdRange(qc, passcode, tick, i, fromId, toId);
-                if (fromId != -1 && toId != -1) {
-                    printf("Tick %u Transaction #%d has log from %lld to %lld. Trying to fetch...\n", tick, i, fromId,
-                           toId);
-                    getLogFromNode(qc, passcode, fromId, toId);
-                } else {
-                    printf("Tick %u Transaction #%d doesn't generate any log\n", tick, i);
+                nTx++;
+            }
+            if (nTx)
+            {
+                for (int i = 0; i < nTx; i++) {
+                    long long fromId = 0, toId = 0;
+                    getLogIdRange(qc, passcode, tick, i, fromId, toId);
+                    if (fromId < 0 || toId < 0) {
+                        printf("Tick %u Transaction #%d doesn't generate any log - returned value %lld %lld\n", tick, i, fromId, toId);
+                        // for debugging
+                        Transaction txs;
+                        extraDataStruct extraData;
+                        getTickTransactions(qc, tick, i, txs, extraData);
+                        if ( memcmp(txs.destinationPublicKey, arbPubkey, 32) == 0)
+                        {
+                            if (txs.inputSize == 32 && txs.amount == 0)
+                            {
+                                printf(">>> Reason: Solution txs has no log\n");
+                            }
+                            else
+                            {
+                                printf(">>> Reason: Invalid solution submission\n");
+                            }
+                        }
+                        else if (isArrayZero(txs.destinationPublicKey, 32) && txs.inputSize == 848) // vote counter
+                        {
+                            printf(">>> Reason: Vote counter tx doesn't generate any log\n");
+                        }
+                        else if ( ((uint64_t*)txs.destinationPublicKey)[0] == 1) // QX
+                        {
+                            if (txs.inputType == 0)
+                            {
+                                printf(">>> Reason: Invalid QX invocation - InputType = 0\n");
+                            }
+                        }
+                        else
+                        {
+                            printf(">>> Reason: Unknown. Tx detail:\n");
+                            printReceipt(txs, nullptr, extraData.vecU8.data(), -1);
+                        }
+                        // end - for debugging
+                    } else {
+                        printf("Tick %u Transaction #%d has log from %lld to %lld. Trying to fetch...\n", tick, i, fromId,
+                               toId);
+                        getLogFromNode(qc, passcode, fromId, toId);
+                    }
                 }
             }
+
             tick++;
             fflush(stdout);
         }

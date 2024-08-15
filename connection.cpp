@@ -96,17 +96,17 @@ int QubicConnection::receiveData(uint8_t* buffer, int sz)
     }
 	return count;
 }
-void QubicConnection::receiveDataAll(std::vector<uint8_t>& receivedData)
+void QubicConnection::receiveAFullPacket(std::vector<uint8_t>& buffer)
 {
     // first receive the header
     RequestResponseHeader header;
     int recvByte = receiveData((uint8_t*)&header, sizeof(RequestResponseHeader));
     if (recvByte != sizeof(RequestResponseHeader)) throw std::logic_error("No connection.");
     int packet_size = header.size();
-    receivedData.resize(header.size());
-    memcpy(receivedData.data(), &header, sizeof(RequestResponseHeader));
+    buffer.resize(header.size());
+    memcpy(buffer.data(), &header, sizeof(RequestResponseHeader));
     // receive the rest
-    recvByte = receiveData(receivedData.data() + sizeof(RequestResponseHeader), packet_size - sizeof(RequestResponseHeader));
+    recvByte = receiveData(buffer.data() + sizeof(RequestResponseHeader), packet_size - sizeof(RequestResponseHeader));
     if (recvByte != packet_size - sizeof(RequestResponseHeader)) throw std::logic_error("No connection.");
 }
 

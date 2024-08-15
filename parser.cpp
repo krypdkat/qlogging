@@ -137,10 +137,10 @@ std::string parseLogToString_type2_type3(uint8_t* ptr){
 }
 void printQubicLog(uint8_t* logBuffer, int bufferSize){
     if (bufferSize == 0){
-        LOG("Empty log\n");
+//        LOG("Empty log\n");
         return;
     }
-    if (bufferSize < 16){
+    if (bufferSize < 24){
         LOG("Buffer size is too small (not enough to contain the header), expected 16 | received %d\n", bufferSize);
         return;
     }
@@ -210,7 +210,7 @@ void printQubicLog(uint8_t* logBuffer, int bufferSize){
             for (int i = 0; i < messageSize; i++){
                 sprintf(buff + i*2, "%02x", logBuffer[i]);
             }
-            LOG("Can't parse, original message: %s\n", buff);
+            LOG("NO parser for this message yet | Original message: %s\n", buff);
         }
         logBuffer+= messageSize;
     }
