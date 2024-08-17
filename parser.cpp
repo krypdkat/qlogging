@@ -3,7 +3,7 @@
 #include <cstring>
 #include "keyUtils.h"
 #include "logger.h"
-
+#include "K12AndKeyUtil.h"
 #define QU_TRANSFER 0
 #define QU_TRANSFER_LOG_SIZE 72
 #define ASSET_ISSUANCE 1
@@ -18,6 +18,9 @@
 #define CONTRACT_INFORMATION_MESSAGE 6
 #define CONTRACT_DEBUG_MESSAGE 7
 #define CUSTOM_MESSAGE 255
+
+#define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
+
 std::string logTypeToString(uint8_t type){
     switch(type){
         case 0:
@@ -140,32 +143,34 @@ void printQubicLog(uint8_t* logBuffer, int bufferSize){
 //        LOG("Empty log\n");
         return;
     }
-    if (bufferSize < 24){
+    if (bufferSize < LOG_HEADER_SIZE){
         LOG("Buffer size is too small (not enough to contain the header), expected 16 | received %d\n", bufferSize);
         return;
     }
     uint8_t* end = logBuffer + bufferSize;
     while (logBuffer < end){
         // basic info
-        uint8_t year = *((unsigned char*)(logBuffer + 0));
-        uint8_t month = *((unsigned char*)(logBuffer + 1));
-        uint8_t day = *((unsigned char*)(logBuffer + 2));
-        uint8_t hour = *((unsigned char*)(logBuffer + 3));
-        uint8_t minute = *((unsigned char*)(logBuffer + 4));
-        uint8_t second = *((unsigned char*)(logBuffer + 5));
-        uint16_t epoch = *((unsigned char*)(logBuffer + 6));
-        uint32_t tick = *((unsigned int*)(logBuffer + 8));
-        uint32_t tmp = *((unsigned int*)(logBuffer + 12));
-        uint64_t logId = *((unsigned long long*)(logBuffer + 16));
+        uint16_t epoch = *((unsigned char*)(logBuffer));
+        uint32_t tick = *((unsigned int*)(logBuffer + 2));
+        uint32_t tmp = *((unsigned int*)(logBuffer + 6));
+        uint64_t logId = *((unsigned long long*)(logBuffer + 10));
+        uint64_t logDigest = *((unsigned long long*)(logBuffer + 18));
         uint8_t messageType = tmp >> 24;
         std::string mt = logTypeToString(messageType);
         uint32_t messageSize = (tmp << 8) >> 8;
-
-        logBuffer += 24;
+        {
+            uint64_t computedLogDigest = 0;
+            KangarooTwelve(logBuffer + LOG_HEADER_SIZE, messageSize, (uint8_t*) & computedLogDigest, 8);
+            if (logDigest != computedLogDigest)
+            {
+                LOG("WARNING: mismatched log digest\n");
+            }
+        }
+        logBuffer += LOG_HEADER_SIZE;
         std::string humanLog = "null";
         switch(messageType){
             case QU_TRANSFER:
-                if (messageSize == QU_TRANSFER_LOG_SIZE || messageSize == (QU_TRANSFER_LOG_SIZE+8)){ // with or without transfer ID
+                if (messageSize == QU_TRANSFER_LOG_SIZE){ // with or without transfer ID
                     humanLog = parseLogToString_type0(logBuffer);
                 } else {
                     LOG("Malfunction buffer size for QU_TRANSFER log\n");
@@ -194,17 +199,25 @@ void printQubicLog(uint8_t* logBuffer, int bufferSize){
                 break;
             // TODO: stay up-to-date with core node contract logger
             case CONTRACT_INFORMATION_MESSAGE:
-                if ( ((uint32_t*)logBuffer)[0] == 4 ) { // QUtil
-                    humanLog = parseLogToString_qutil(logBuffer+8); // padding issue, +8 instead of +4
-                }
-                break;
             case CONTRACT_ERROR_MESSAGE:
             case CONTRACT_WARNING_MESSAGE:
             case CONTRACT_DEBUG_MESSAGE:
+                unsigned int contractId = ((uint32_t*)logBuffer)[0];
+                humanLog = "Contract ID #" + std::to_string(contractId) + " ";
+                if (messageType == CONTRACT_INFORMATION_MESSAGE) humanLog += "INFO: ";
+                if (messageType == CONTRACT_ERROR_MESSAGE) humanLog += "ERROR: ";
+                if (messageType == CONTRACT_WARNING_MESSAGE) humanLog += "WARNING: ";
+                if (messageType == CONTRACT_DEBUG_MESSAGE) humanLog += "DEBUG: ";
+                char buff[1024*2] = { 0 };
+                for (int i = 4; i < messageSize; i++) {
+                    sprintf(buff + i * 2, "%02x", logBuffer[i]);
+                }
+                humanLog += std::string(buff);
+                break;
             case 255:
                 break;
         }
-        LOG("%02d-%02d-%02d %02d:%02d:%02d %u.%03d %s: %s\n", year, month, day, hour, minute, second, tick, epoch, mt.c_str(), humanLog.c_str());
+        LOG("%u.%03d %s: %s\n", tick, epoch, mt.c_str(), humanLog.c_str());
         if (humanLog == "null"){
             char buff[1024] = {0};
             for (int i = 0; i < messageSize; i++){
