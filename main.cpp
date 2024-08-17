@@ -8,6 +8,7 @@
 #include "K12AndKeyUtil.h"
 #include "logger.h"
 #include <stdexcept>
+#undef ARBITRATOR
 #define ARBITRATOR "MEFKYFCDXDUILCAJKOIKWQAPENJDUHSSYPBRWFOTLALILAYWQFDSITJELLHG"
 
 template <typename T>
@@ -227,7 +228,7 @@ uint32_t getTickNumberFromNode(QCPtr& qc)
     auto curTickInfo = getTickInfoFromNode(qc);
     return curTickInfo.tick;
 }
-
+TickData td;
 int run(int argc, char* argv[])
 {
     if (argc != 8)
@@ -264,7 +265,7 @@ int run(int argc, char* argv[])
                 std::this_thread::sleep_for(std::chrono::seconds(3));
                 continue;
             }
-            TickData td;
+            
             memset(&td, 0, sizeof(td));
             getTickData(qc, tick, td);
             if (isArrayZero((uint8_t *) &td, sizeof(td))) {
@@ -280,6 +281,7 @@ int run(int argc, char* argv[])
                 if (isArrayZero(td.transactionDigests[i], 32)) break;
                 nTx++;
             }
+
             if (nTx)
             {
                 for (int i = 0; i < nTx; i++) {
