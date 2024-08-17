@@ -1,6 +1,7 @@
 #include "parser.h"
 #include <string>
 #include <cstring>
+#include "utils.h"
 #include "keyUtils.h"
 #include "logger.h"
 #include "K12AndKeyUtil.h"
@@ -212,9 +213,7 @@ unsigned long long printQubicLog(uint8_t* logBuffer, int bufferSize){
                 if (messageType == CONTRACT_WARNING_MESSAGE) humanLog += "WARNING: ";
                 if (messageType == CONTRACT_DEBUG_MESSAGE) humanLog += "DEBUG: ";
                 char buff[1024 * 2] = { 0 };
-                for (unsigned int i = 4; i < messageSize; i++) {
-                    sprintf(buff + i * 2, "%02x", logBuffer[i]);
-                }
+                byteToHex(logBuffer + 4, buff, messageSize - 4);
                 humanLog += std::string(buff);
                 break;
             }   
