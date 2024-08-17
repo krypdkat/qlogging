@@ -44,6 +44,7 @@ void getLogFromNode(QCPtr& qc, uint64_t* passcode, uint64_t fromId, uint64_t toI
         unsigned long long fromid;
         unsigned long long toid;
     } packet;
+    memset(&packet, 0, sizeof(packet));
     packet.header.setSize(sizeof(packet));
     packet.header.randomizeDejavu();
     packet.header.setType(RequestLog::type());
@@ -56,14 +57,25 @@ void getLogFromNode(QCPtr& qc, uint64_t* passcode, uint64_t fromId, uint64_t toI
     uint8_t* data = buffer.data();
     int recvByte = buffer.size();
     int ptr = 0;
+    unsigned long long retLogId = -1; // max uint64
     while (ptr < recvByte)
     {
         auto header = (RequestResponseHeader*)(data+ptr);
         if (header->type() == RespondLog::type()){
             auto logBuffer = (uint8_t*)(data + ptr + sizeof(RequestResponseHeader));
-            printQubicLog(logBuffer, header->size() - sizeof(RequestResponseHeader));
+            retLogId = printQubicLog(logBuffer, header->size() - sizeof(RequestResponseHeader));
         }
         ptr+= header->size();
+    }
+
+    if (retLogId < toId)
+    {
+        // round buffer case, only the first half returned, call one more time to print out another half
+        getLogFromNode(qc, passcode, retLogId + 1, toId);
+    }
+    if (retLogId == -1)
+    {
+        printf("WARNING: Unexpected value for retLogId\n");
     }
 }
 
@@ -75,6 +87,7 @@ void getLogIdRange(QCPtr& qc, uint64_t* passcode, uint32_t requestedTick, uint32
         unsigned int tick;
         unsigned int txId;
     } packet;
+    memset(&packet, 0, sizeof(packet));
     packet.header.setSize(sizeof(packet));
     packet.header.randomizeDejavu();
     packet.header.setType(RequestLogIdRange::type());
@@ -103,6 +116,7 @@ static CurrentTickInfo getTickInfoFromNode(QCPtr& qc)
     struct {
         RequestResponseHeader header;
     } packet;
+    memset(&packet, 0, sizeof(packet));
     packet.header.setSize(sizeof(packet));
     packet.header.randomizeDejavu();
     packet.header.setType(REQUEST_CURRENT_TICK_INFO);
@@ -133,6 +147,7 @@ static void getTickTransactions(QCPtr& qc, const uint32_t requestedTick, int req
         RequestResponseHeader header;
         RequestedTickTransactions txs;
     } packet;
+    memset(&packet, 0, sizeof(packet));
     packet.header.setSize(sizeof(packet));
     packet.header.randomizeDejavu();
     packet.header.setType(REQUEST_TICK_TRANSACTIONS); // REQUEST_TICK_TRANSACTIONS

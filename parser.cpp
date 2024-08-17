@@ -138,22 +138,24 @@ std::string parseLogToString_type2_type3(uint8_t* ptr){
                          + std::to_string(unit[6]);
     return result;
 }
-void printQubicLog(uint8_t* logBuffer, int bufferSize){
+unsigned long long printQubicLog(uint8_t* logBuffer, int bufferSize){
     if (bufferSize == 0){
 //        LOG("Empty log\n");
-        return;
+        return -1;
     }
     if (bufferSize < LOG_HEADER_SIZE){
         LOG("Buffer size is too small (not enough to contain the header), expected 16 | received %d\n", bufferSize);
-        return;
+        return -1;
     }
     uint8_t* end = logBuffer + bufferSize;
+    unsigned long long retLogId = 0;
     while (logBuffer < end){
         // basic info
         uint16_t epoch = *((unsigned char*)(logBuffer));
         uint32_t tick = *((unsigned int*)(logBuffer + 2));
         uint32_t tmp = *((unsigned int*)(logBuffer + 6));
         uint64_t logId = *((unsigned long long*)(logBuffer + 10));
+        if (logId > retLogId) retLogId = logId;
         uint64_t logDigest = *((unsigned long long*)(logBuffer + 18));
         uint8_t messageType = tmp >> 24;
         std::string mt = logTypeToString(messageType);
@@ -202,29 +204,32 @@ void printQubicLog(uint8_t* logBuffer, int bufferSize){
             case CONTRACT_ERROR_MESSAGE:
             case CONTRACT_WARNING_MESSAGE:
             case CONTRACT_DEBUG_MESSAGE:
+            {
                 unsigned int contractId = ((uint32_t*)logBuffer)[0];
                 humanLog = "Contract ID #" + std::to_string(contractId) + " ";
                 if (messageType == CONTRACT_INFORMATION_MESSAGE) humanLog += "INFO: ";
                 if (messageType == CONTRACT_ERROR_MESSAGE) humanLog += "ERROR: ";
                 if (messageType == CONTRACT_WARNING_MESSAGE) humanLog += "WARNING: ";
                 if (messageType == CONTRACT_DEBUG_MESSAGE) humanLog += "DEBUG: ";
-                char buff[1024*2] = { 0 };
-                for (int i = 4; i < messageSize; i++) {
+                char buff[1024 * 2] = { 0 };
+                for (unsigned int i = 4; i < messageSize; i++) {
                     sprintf(buff + i * 2, "%02x", logBuffer[i]);
                 }
                 humanLog += std::string(buff);
                 break;
+            }   
             case 255:
                 break;
         }
-        LOG("%u.%03d %s: %s\n", tick, epoch, mt.c_str(), humanLog.c_str());
+        LOG("[%llu] %u.%03d %s: %s\n", logId, tick, epoch, mt.c_str(), humanLog.c_str());
         if (humanLog == "null"){
             char buff[1024] = {0};
-            for (int i = 0; i < messageSize; i++){
+            for (unsigned int i = 0; i < messageSize; i++){
                 sprintf(buff + i*2, "%02x", logBuffer[i]);
             }
             LOG("NO parser for this message yet | Original message: %s\n", buff);
         }
         logBuffer+= messageSize;
     }
+    return retLogId;
 }

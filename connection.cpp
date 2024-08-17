@@ -15,6 +15,9 @@
 
 #include "connection.h"
 #include "logger.h"
+#ifndef min
+#define min(x,y) std::min(x,y)
+#endif
 #ifdef _MSC_VER
 static int connect(const char* nodeIp, int nodePort)
 {
@@ -86,7 +89,7 @@ int QubicConnection::receiveData(uint8_t* buffer, int sz)
     int count = 0;
     while (sz)
     {
-        auto ret = recv(mSocket, (char*)buffer + count, std::min(1024,sz), 0);
+        auto ret = recv(mSocket, (char*)buffer + count, min(1024,sz), 0);
         if (ret == -1)
         {
             return -1;

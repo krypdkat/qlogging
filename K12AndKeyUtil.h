@@ -2198,7 +2198,7 @@ VOID_FUNC_DECL signWithNonceK(const unsigned char* k, const unsigned char* publi
     // Inputs: 64-byte input (k precomputed), 32-byte publicKey, and messageDigest of size 32 in bytes
     // Output: 64-byte signature
     point_t R;
-    unsigned char h[64] , temp[32 + 64];
+    unsigned char h[64] = { 0 }, temp[32 + 64] = { 0 };
     unsigned long long r[8];
 
     *((__m256i*)(temp + 32)) = *((__m256i*)(k + 32));
