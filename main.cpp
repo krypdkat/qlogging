@@ -326,7 +326,9 @@ int run(int argc, char* argv[])
                     }
                 }
             }
-
+            else {
+                printf("Tick %u has no transaction\n", tick);
+            }
             tick++;
             fflush(stdout);
         }
