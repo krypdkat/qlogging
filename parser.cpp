@@ -205,6 +205,7 @@ unsigned long long printQubicLog(uint8_t* logBuffer, int bufferSize){
             case CONTRACT_ERROR_MESSAGE:
             case CONTRACT_WARNING_MESSAGE:
             case CONTRACT_DEBUG_MESSAGE:
+            case 255:
             {
                 unsigned int contractId = ((uint32_t*)logBuffer)[0];
                 humanLog = "Contract ID #" + std::to_string(contractId) + " ";
@@ -212,17 +213,16 @@ unsigned long long printQubicLog(uint8_t* logBuffer, int bufferSize){
                 if (messageType == CONTRACT_ERROR_MESSAGE) humanLog += "ERROR: ";
                 if (messageType == CONTRACT_WARNING_MESSAGE) humanLog += "WARNING: ";
                 if (messageType == CONTRACT_DEBUG_MESSAGE) humanLog += "DEBUG: ";
+                if (messageType == 255) humanLog += "CUSTOM: ";
                 char buff[1024 * 2] = { 0 };
                 byteToHex(logBuffer + 4, buff, messageSize - 4);
                 humanLog += std::string(buff);
                 break;
-            }   
-            case 255:
-                break;
+            }
         }
         LOG("[%llu] %u.%03d %s: %s\n", logId, tick, epoch, mt.c_str(), humanLog.c_str());
         if (humanLog == "null"){
-            char buff[1024] = {0};
+            char buff[1024*2] = {0};
             for (unsigned int i = 0; i < messageSize; i++){
                 sprintf(buff + i*2, "%02x", logBuffer[i]);
             }
