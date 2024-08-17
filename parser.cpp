@@ -18,6 +18,8 @@
 #define CONTRACT_WARNING_MESSAGE 5
 #define CONTRACT_INFORMATION_MESSAGE 6
 #define CONTRACT_DEBUG_MESSAGE 7
+#define BURNING 8
+#define BURNING_LOG_SIZE 40
 #define CUSTOM_MESSAGE 255
 
 #define LOG_HEADER_SIZE 26 // 2 bytes epoch + 4 bytes tick + 4 bytes log size/types + 8 bytes log id + 8 bytes log digest
@@ -40,6 +42,8 @@ std::string logTypeToString(uint8_t type){
             return "Contract info";
         case 7:
             return "Contract debug";
+        case 8:
+            return "Burn";
         case 255:
             return "Custom msg";
     }
@@ -111,6 +115,15 @@ std::string parseLogToString_qutil(uint8_t* ptr){
     }
     return res;
 }
+
+std::string parseBurningLog(uint8_t* ptr)
+{
+    char sourceIdentity[61] = { 0 };
+    uint64_t burnAmount = *((uint64_t*)(ptr+32));
+    getIdentityFromPublicKey(ptr, sourceIdentity, false);
+    return std::string(sourceIdentity) + " burned " + std::to_string(burnAmount) + " QUs";
+}
+
 std::string parseLogToString_type2_type3(uint8_t* ptr){
     char sourceIdentity[61] = {0};
     char dstIdentity[61] = {0};
@@ -198,6 +211,14 @@ unsigned long long printQubicLog(uint8_t* logBuffer, int bufferSize){
                     humanLog = parseLogToString_type2_type3(logBuffer);
                 } else {
                     LOG("Malfunction buffer size for ASSET_POSSESSION_CHANGE log\n");
+                }
+                break;
+            case BURNING:
+                if (messageSize == BURNING_LOG_SIZE) {
+                    humanLog = parseBurningLog(logBuffer);
+                }
+                else {
+                    LOG("Malfunction buffer size for BURNING log\n");
                 }
                 break;
             // TODO: stay up-to-date with core node contract logger
