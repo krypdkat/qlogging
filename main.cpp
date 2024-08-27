@@ -223,12 +223,31 @@ void printReceipt(Transaction& tx, const char* txHash = nullptr, const uint8_t* 
     LOG("~~~~~END-RECEIPT~~~~~\n");
 }
 
-uint32_t getTickNumberFromNode(QCPtr& qc)
+uint32_t getTickNumberFromNode(QCPtr& qc, char* isFirstTick = NULL)
 {
     auto curTickInfo = getTickInfoFromNode(qc);
+    if (isFirstTick){
+        *isFirstTick = curTickInfo.initialTick == curTickInfo.tick;
+    }
     return curTickInfo.tick;
 }
 TickData td;
+void checkSystemLog(QCPtr& qc, uint64_t* passcode, unsigned int tick, unsigned int systemEventID, std::string systemEventName)
+{
+    long long fromId = 0, toId = 0;
+    getLogIdRange(qc, passcode, tick, systemEventID, fromId, toId);
+    if (fromId < 0 || toId < 0) {}
+    else{
+        printf("Tick %u %s has log from %lld to %lld\n", tick, systemEventName.c_str(), fromId, toId);
+        getLogFromNode(qc, passcode, fromId, toId);
+    }
+}
+unsigned int SC_INITIALIZE_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 0;
+unsigned int SC_BEGIN_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 1;
+unsigned int SC_BEGIN_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 2;
+unsigned int SC_END_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 3;
+unsigned int SC_END_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 4;
+
 int run(int argc, char* argv[])
 {
     if (argc != 8)
@@ -246,6 +265,7 @@ int run(int argc, char* argv[])
     QCPtr qc;
     uint32_t currentTick = 0;
     bool needReconnect = true;
+    char isFirstTick = 0;
     while (1)
     {
         try {
@@ -257,8 +277,10 @@ int run(int argc, char* argv[])
                 qc->receiveAFullPacket(buff);
                 needReconnect = false;
             }
+
             if (currentTick == 0 || currentTick <= tick) {
-                currentTick = getTickNumberFromNode(qc);
+                isFirstTick = 0;
+                currentTick = getTickNumberFromNode(qc, &isFirstTick);
             }
             if (currentTick <= tick) {
                 printDebug("Current tick %u vs local tick %u | sleep 3s\n", currentTick, tick);
@@ -269,12 +291,19 @@ int run(int argc, char* argv[])
             memset(&td, 0, sizeof(td));
             getTickData(qc, tick, td);
             if (isArrayZero((uint8_t *) &td, sizeof(td))) {
-                printf("Tick %u is empty\n", tick);
+                printDebug("Tick %u is empty\n", tick);
                 fflush(stdout);
                 tick++;
                 continue;
             }
 
+            if (isFirstTick)
+            {
+                isFirstTick = 0;
+                checkSystemLog(qc, passcode, tick, SC_INITIALIZE_TX, "SC_INITIALIZE_TX");
+                checkSystemLog(qc, passcode, tick, SC_BEGIN_EPOCH_TX, "SC_BEGIN_EPOCH_TX");
+            }
+            checkSystemLog(qc, passcode, tick, SC_BEGIN_TICK_TX, "SC_BEGIN_TICK_TX");
             // for debugging purpose, this one isn't needed in real code
             int nTx = 0;
             for (int i = 0; i < 1024; i++) {
@@ -333,6 +362,9 @@ int run(int argc, char* argv[])
             else {
                 printDebug("Tick %u has no transaction\n", tick);
             }
+            checkSystemLog(qc, passcode, tick, SC_END_TICK_TX, "SC_END_TICK_TX");
+            checkSystemLog(qc, passcode, tick, SC_END_EPOCH_TX, "SC_END_EPOCH_TX");
+
             tick++;
             fflush(stdout);
         }
