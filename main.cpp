@@ -10,7 +10,7 @@
 #include <stdexcept>
 #undef ARBITRATOR
 #define ARBITRATOR "MEFKYFCDXDUILCAJKOIKWQAPENJDUHSSYPBRWFOTLALILAYWQFDSITJELLHG"
-
+#define DEBUG 0
 template <typename T>
 T charToNumber(char* a)
 {
@@ -261,7 +261,7 @@ int run(int argc, char* argv[])
                 currentTick = getTickNumberFromNode(qc);
             }
             if (currentTick <= tick) {
-                printf("Current tick %u vs local tick %u | sleep 3s\n", currentTick, tick);
+                printDebug("Current tick %u vs local tick %u | sleep 3s\n", currentTick, tick);
                 std::this_thread::sleep_for(std::chrono::seconds(3));
                 continue;
             }
@@ -288,6 +288,7 @@ int run(int argc, char* argv[])
                     long long fromId = 0, toId = 0;
                     getLogIdRange(qc, passcode, tick, i, fromId, toId);
                     if (fromId < 0 || toId < 0) {
+#if DEBUG
                         printf("Tick %u Transaction #%d doesn't generate any log - returned value %lld %lld\n", tick, i, fromId, toId);
                         // for debugging
                         Transaction txs;
@@ -321,6 +322,7 @@ int run(int argc, char* argv[])
                             printReceipt(txs, nullptr, extraData.vecU8.data(), -1);
                         }
                         // end - for debugging
+#endif
                     } else {
                         printf("Tick %u Transaction #%d has log from %lld to %lld. Trying to fetch...\n", tick, i, fromId,
                                toId);
@@ -329,7 +331,7 @@ int run(int argc, char* argv[])
                 }
             }
             else {
-                printf("Tick %u has no transaction\n", tick);
+                printDebug("Tick %u has no transaction\n", tick);
             }
             tick++;
             fflush(stdout);
